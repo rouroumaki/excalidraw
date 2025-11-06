@@ -93,6 +93,7 @@ interface CollabState {
   /** errors related to saving */
   dialogNotifiedErrors: Record<string, boolean>;
   username: string;
+  userId: string | null;
   activeRoomLink: string | null;
 }
 
@@ -135,6 +136,7 @@ class Collab extends PureComponent<CollabProps, CollabState> {
       errorMessage: null,
       dialogNotifiedErrors: {},
       username: importUsernameFromLocalStorage() || "",
+      userId: null,
       activeRoomLink: null,
     };
     this.portal = new Portal(this);
@@ -458,13 +460,28 @@ class Collab extends PureComponent<CollabProps, CollabState> {
   private fallbackInitializationHandler: null | (() => any) = null;
 
   startCollaboration = async (
-    existingRoomLinkData: null | { roomId: string; roomKey: string },
+    existingRoomLinkData: null | {
+      roomId: string;
+      roomKey: string;
+      userName?: string;
+      userId?: string;
+    },
   ) => {
-    if (!this.state.username) {
+    // Set userName if provided, otherwise use existing or generate random
+    if (existingRoomLinkData?.userName) {
+      this.setUsername(existingRoomLinkData.userName);
+    } else if (!this.state.username) {
       import("@excalidraw/random-username").then(({ getRandomUsername }) => {
         const username = getRandomUsername();
         this.setUsername(username);
       });
+    }
+
+    // Set userId if provided
+    if (existingRoomLinkData?.userId) {
+      this.setState({ userId: existingRoomLinkData.userId });
+      // Log userId for tracking purposes
+      console.info(`User ID set: ${existingRoomLinkData.userId}`);
     }
 
     if (this.portal.socket) {

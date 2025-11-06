@@ -128,18 +128,92 @@ export type SocketUpdateData =
 const RE_COLLAB_LINK = /^#room=([a-zA-Z0-9_-]+),([a-zA-Z0-9_-]+)$/;
 
 export const isCollaborationLink = (link: string) => {
-  const hash = new URL(link).hash;
-  return RE_COLLAB_LINK.test(hash);
+  const url = new URL(link);
+  const hash = url.hash;
+  const searchParams = url.searchParams;
+  // Check for old format in hash or new format in query params
+  return (
+    RE_COLLAB_LINK.test(hash) ||
+    hash.includes("#room=") ||
+    searchParams.has("room")
+  );
 };
 
-export const getCollaborationLinkData = (link: string) => {
-  const hash = new URL(link).hash;
-  const match = hash.match(RE_COLLAB_LINK);
-  if (match && match[2].length !== 22) {
-    window.alert(t("alerts.invalidEncryptionKey"));
-    return null;
+export type CollaborationLinkData = {
+  roomId: string;
+  roomKey?: string;
+  userName?: string;
+  userId?: string;
+  needsRoomKey?: boolean; // Indicates if roomKey needs to be fetched from backend
+};
+
+export const getCollaborationLinkData = (
+  link: string,
+): CollaborationLinkData | null => {
+  const url = new URL(link);
+  const hash = url.hash;
+  const searchParams = url.searchParams;
+
+  // First check for old format: #room=roomId,roomKey
+  const oldFormatMatch = hash.match(RE_COLLAB_LINK);
+  if (oldFormatMatch) {
+    if (oldFormatMatch[2].length !== 22) {
+      window.alert(t("alerts.invalidEncryptionKey"));
+      return null;
+    }
+    return { roomId: oldFormatMatch[1], roomKey: oldFormatMatch[2] };
   }
-  return match ? { roomId: match[1], roomKey: match[2] } : null;
+
+  // Check for new format in query params: ?room=xx&userName=xx&userId=xx
+  const roomId = searchParams.get("room");
+  if (roomId) {
+    const result: CollaborationLinkData = {
+      roomId,
+      needsRoomKey: true, // New format requires fetching roomKey from backend
+    };
+
+    const userName = searchParams.get("userName");
+    if (userName) {
+      result.userName = userName;
+    }
+
+    const userId = searchParams.get("userId");
+    if (userId) {
+      result.userId = userId;
+    }
+
+    return result;
+  }
+
+  // Legacy support: Check for old hash format: #room=xx&userName=xx&userId=xx
+  if (hash.startsWith("#room=")) {
+    // Parse hash parameters (format: #room=xx&userName=xx&userId=xx)
+    const hashParams = new URLSearchParams(hash.substring(1)); // Remove leading #
+    const hashRoomId = hashParams.get("room");
+
+    if (!hashRoomId) {
+      return null;
+    }
+
+    const result: CollaborationLinkData = {
+      roomId: hashRoomId,
+      needsRoomKey: true, // New format requires fetching roomKey from backend
+    };
+
+    const userName = hashParams.get("userName");
+    if (userName) {
+      result.userName = userName;
+    }
+
+    const userId = hashParams.get("userId");
+    if (userId) {
+      result.userId = userId;
+    }
+
+    return result;
+  }
+
+  return null;
 };
 
 export const generateCollaborationLinkData = async () => {
@@ -306,7 +380,7 @@ export const exportToBackend = async (
 
     const response = await fetch(BACKEND_V2_POST, {
       method: "POST",
-      body: payload.buffer,
+      body: payload.buffer as ArrayBuffer,
     });
     const json = await response.json();
     if (json.id) {

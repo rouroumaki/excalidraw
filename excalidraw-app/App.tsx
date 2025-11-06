@@ -60,7 +60,13 @@ import {
   getCollaborationLinkData,
   isCollaborationLink,
   loadScene,
+  type CollaborationLinkData,
 } from "./data";
+import {
+  getRoomKeyFromBackend,
+  saveRoomKeyToBackend,
+} from "./data/httpStorage";
+import { generateCollaborationLinkData } from "./data";
 import {
   importFromLocalStorage,
   importUsernameFromLocalStorage,
@@ -285,7 +291,35 @@ const initializeScene = async (opts: {
   if (roomLinkData && opts.collabAPI) {
     const { excalidrawAPI } = opts;
 
-    const scene = await opts.collabAPI.startCollaboration(roomLinkData);
+    // If roomKey is missing, fetch it from backend or generate new one
+    let finalRoomLinkData: CollaborationLinkData = roomLinkData;
+    if (roomLinkData.needsRoomKey && !roomLinkData.roomKey) {
+      let roomKey = await getRoomKeyFromBackend(roomLinkData.roomId);
+
+      // If room doesn't exist, generate new roomKey and save it
+      if (!roomKey) {
+        const newRoomData = await generateCollaborationLinkData();
+        roomKey = newRoomData.roomKey;
+        // Save the generated roomKey to backend for future use
+        await saveRoomKeyToBackend(roomLinkData.roomId, roomKey);
+      }
+
+      finalRoomLinkData = {
+        ...roomLinkData,
+        roomKey,
+        needsRoomKey: false,
+      };
+    }
+
+    // Prepare roomLinkData for startCollaboration (only roomId and roomKey are needed)
+    const collaborationData = {
+      roomId: finalRoomLinkData.roomId,
+      roomKey: finalRoomLinkData.roomKey!,
+      userName: finalRoomLinkData.userName,
+      userId: finalRoomLinkData.userId,
+    };
+
+    const scene = await opts.collabAPI.startCollaboration(collaborationData);
 
     return {
       // when collaborating, the state may have already been updated at this
@@ -312,8 +346,8 @@ const initializeScene = async (opts: {
         ),
       },
       isExternalScene: true,
-      id: roomLinkData.roomId,
-      key: roomLinkData.roomKey,
+      id: finalRoomLinkData.roomId,
+      key: finalRoomLinkData.roomKey || "",
     };
   } else if (scene) {
     return isExternalScene && jsonBackendMatch

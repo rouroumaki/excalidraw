@@ -38,6 +38,63 @@ const SCENE_VERSION_LENGTH_BYTES = 4;
 
 const httpStorageSceneVersionCache = new WeakMap<Socket, number>();
 
+/**
+ * Get roomKey from backend storage
+ * @param roomId The room ID
+ * @returns The roomKey string or null if not found
+ */
+export const getRoomKeyFromBackend = async (
+  roomId: string,
+): Promise<string | null> => {
+  try {
+    const response = await fetch(
+      `${HTTP_STORAGE_BACKEND_URL}/rooms/${roomId}/key`,
+    );
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        return null;
+      }
+      throw new Error(`Failed to get room key: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.key || null;
+  } catch (error: any) {
+    console.error("Error fetching room key from backend:", error);
+    return null;
+  }
+};
+
+/**
+ * Save roomKey to backend storage
+ * @param roomId The room ID
+ * @param roomKey The roomKey string to store
+ * @returns true if successful, false otherwise
+ */
+export const saveRoomKeyToBackend = async (
+  roomId: string,
+  roomKey: string,
+): Promise<boolean> => {
+  try {
+    const response = await fetch(
+      `${HTTP_STORAGE_BACKEND_URL}/rooms/${roomId}/key`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ key: roomKey }),
+      },
+    );
+
+    return response.ok;
+  } catch (error: any) {
+    console.error("Error saving room key to backend:", error);
+    return false;
+  }
+};
+
 export const isSavedToHttpStorage = (
   portal: Portal,
   elements: readonly ExcalidrawElement[],
